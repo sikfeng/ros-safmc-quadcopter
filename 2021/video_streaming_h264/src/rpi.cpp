@@ -43,7 +43,8 @@ int main(int argc, char **argv) {
             << img_metadata[2] << " type" << std::endl;
   std::cout << "Image size: " << img_size << std::endl;
 
-  H264 encoder(img.cols, img.rows, img.cols, img.rows);
+  H264 encoder(img.cols, img.rows, img.cols, img.rows, true);
+  //H264 decoder(img.cols, img.rows, img.cols, img.rows);
   // allocate packet to retrive encoded frame
   pkt = av_packet_alloc();
 
@@ -122,6 +123,7 @@ int main(int argc, char **argv) {
       std::cout << "pkt_side_data_elems:" << pkt->side_data_elems << "\n";
       std::cout << "pkt_flags:" << pkt->flags << "\n";
       std::cout << "===========================\n" << std::endl;
+      //decoder.decode(pkt);
       av_packet_free(&pkt);
       pkt = av_packet_alloc();
     }

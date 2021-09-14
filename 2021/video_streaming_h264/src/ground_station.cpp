@@ -68,11 +68,11 @@ int main(int argc, char **argv) {
     img = img.clone();
   }
 
-  H264 decoder(width, height, width,height);
+  H264 decoder(width, height, width,height, false);
   AVPacket *pkt;
   AVPacketSideDataType type;
   uint8_t buf[img_size*2];
-  uint8_t side_data[img_size];
+  uint8_t side_data[1000];
 
   int ret;
 
@@ -85,6 +85,8 @@ int main(int argc, char **argv) {
       size_t len1 = asio::read(socket, asio::buffer((void*)&type, packetinfo.side_data_type_size));
       size_t len2 = asio::read(socket, asio::buffer(buf, packetinfo.size_data));
       size_t len3 = asio::read(socket, asio::buffer(side_data, packetinfo.size_side_data));
+
+      std::cout << "recv: " << len << "bytes, " << len1 << "bytes, " << len2 << "bytes, " << len3 << "bytes" <<std::endl;
       av_packet_from_data(pkt, buf, static_cast<int>(packetinfo.size_data));
       av_packet_add_side_data(pkt, type, side_data, packetinfo.size_side_data);
       pkt->duration = packetinfo.duration;
@@ -99,8 +101,7 @@ int main(int argc, char **argv) {
       std::cout << "===========================\n" << std::endl;
 
       decoder.decode(pkt);
-      av_packet_free(&pkt);
-      while ((ret = decoder.get_frame(img)) >= 0) {  }
+      while ((ret = decoder.get_frame(&img)) >= 0) {  }
       if (ret == AVERROR_EOF) {
         std::cerr << "fail to avcodec_receive_frame: ret=" << ret << "\n";
         break;

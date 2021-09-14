@@ -5,11 +5,12 @@
 #include <iostream>
 #include "h264.h"
 
-H264::H264(int frame_width, int frame_height, int encode_width, int encode_height) {
+H264::H264(int frame_width, int frame_height, int encode_width, int encode_height, bool encode) {
     this->frame_height = frame_height;
     this->frame_width = frame_width;
     /* find the mpeg1 video encoder */
-    codec = avcodec_find_encoder(codec_id);
+    if (encode) codec = avcodec_find_encoder(codec_id);
+    else codec = avcodec_find_decoder(codec_id);
     if (!codec) {
         fprintf(stderr, "Codec not found\n");
         exit(1);
@@ -27,7 +28,7 @@ H264::H264(int frame_width, int frame_height, int encode_width, int encode_heigh
     c->width = encode_width;
     c->height = encode_height;
     /* frames per second */
-    c->time_base = (AVRational){1,25};
+    //c->time_base = (AVRational){1,25};
     /* emit one intra frame every ten frames
     * check frame pict_type before passing frame
     * to encoder, if frame->pict_type is AV_PICTURE_TYPE_I
@@ -36,7 +37,9 @@ H264::H264(int frame_width, int frame_height, int encode_width, int encode_heigh
     */
     c->gop_size = 10;
     c->max_b_frames = 1;
-    c->pix_fmt = codec->pix_fmts[0];
+    c->pix_fmt = AV_PIX_FMT_YUV420P;
+    c->time_base = av_inv_q(dst_fps);
+    c->framerate = dst_fps;
 
     av_dict_set(&dict, "preset", "fast", 0);
 
@@ -67,14 +70,20 @@ H264::H264(int frame_width, int frame_height, int encode_width, int encode_heigh
 
     // allocate frame buffer for encoding
     frame = av_frame_alloc();
-    frame->width = c->width;
-    frame->height = c->height;
-    frame->format = static_cast<int>(c->pix_fmt);
-    ret = av_frame_get_buffer(frame, 32);
-    if (ret < 0) {
-        std::cerr << "fail to av_frame_get_buffer: ret=" << ret;
-        throw std::runtime_error("fail to av_frame_get_buffer");
+    if (encode) {
+        frame->width = c->width;
+        frame->height = c->height;
+        frame->format = static_cast<int>(c->pix_fmt);
+        ret = av_frame_get_buffer(frame, 32);
+        if (ret < 0) {
+            std::cerr << "fail to av_frame_get_buffer: ret=" << ret;
+            throw std::runtime_error("fail to av_frame_get_buffer");
+        }
     }
+
+    frame_converted = av_frame_alloc();
+    av_image_alloc(frame_converted->data, frame_converted->linesize, frame_width, frame_height, AV_PIX_FMT_BGR24, 32);
+    av_image_fill_arrays(frame_converted->data, frame_converted->linesize, NULL, AV_PIX_FMT_BGR24, frame_width, frame_height, 32);
 
     std::cout<< "vcodec:  " << codec->name << "\n"
              << "size:    " << c->width << 'x' << c->height << "\n"
@@ -105,15 +114,16 @@ void H264::decode(AVPacket *packet) {
 }
 
 int H264::get_packet(AVPacket *packet) {
-    return avcodec_receive_packet(c, packet);
+    int out = avcodec_receive_packet(c, packet);
+    packet->duration = 1;
+    return out;
 }
 
-int H264::get_frame(cv::Mat image) {
+int H264::get_frame(cv::Mat *image) {
     int out = avcodec_receive_frame(c, frame);
-    AVFrame *frame_converted = av_frame_alloc();
     sws_scale(swsctx_frame_to_mat, frame->data, frame->linesize, 0, c->height, frame_converted->data, frame_converted->linesize);
     cv::Mat mat(frame_height, frame_width, CV_8UC3, frame_converted->data[0], frame_converted->linesize[0]);
-    image = mat;
+    image = &mat;
     return out;
 }
 

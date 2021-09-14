@@ -23,7 +23,9 @@ private:
     AVCodecContext *c= nullptr;
     int ret;
     AVFrame *frame;
+    AVFrame *frame_converted;
     AVDictionary* dict = nullptr;
+    const AVRational dst_fps = {30, 1};
 
     SwsContext* swsctx_mat_to_frame = nullptr;
     SwsContext* swsctx_frame_to_mat = nullptr;
@@ -34,12 +36,12 @@ private:
     int frame_height, frame_width;
 
 public:
-    H264(int frame_width, int frame_height, int encode_width, int encode_height);
+    H264(int frame_width, int frame_height, int encode_width, int encode_height, bool encode);
     void encode(cv::Mat image);
     void decode(AVPacket *packet);
 
     int get_packet(AVPacket *packet);
-    int get_frame(cv::Mat image);
+    int get_frame(cv::Mat *image);
 
     void flushEncode();
 };
