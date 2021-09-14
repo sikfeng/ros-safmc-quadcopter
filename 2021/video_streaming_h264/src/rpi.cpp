@@ -12,8 +12,8 @@ int main(int argc, char **argv) {
   //ros::init(argc, argv, "video_streaming");
   //ros::NodeHandle nh;
 
-  //std::string ground_station_addr = "127.0.0.1";
-  std::string ground_station_addr = "6.tcp.ngrok.io";
+  std::string ground_station_addr = "127.0.0.1";
+  //std::string ground_station_addr = "6.tcp.ngrok.io";
   std::string ground_station_port = "17104";
   //ros::param::get("ground_station_addr", ground_station_addr);
   //ros::param::get("ground_station_port", ground_station_port);
@@ -87,24 +87,43 @@ int main(int argc, char **argv) {
       uint32_t size_data;
       uint32_t size_side_data;
       uint32_t side_data_type_size;
+      uint32_t flags;
+      uint32_t stream_index;
+      uint32_t pos;
+      uint32_t duration;
   } packetinfo;
 
   //cv::namedWindow("rpi_send", 1);
-  for (int i = 0; i < 1000; ++i) {
-    if (i == 1000)
+  for (int i = 0; i < 100; ++i) {
+    if (i == 100)
       encoder.flushEncode();
     else
       cap >> img;
 
     encoder.encode(img);
+    pkt = av_packet_alloc();
     while ((ret = encoder.get_packet(pkt)) >= 0) {
       packetinfo.size_data = pkt->size;
       packetinfo.size_side_data = pkt->side_data->size;
       packetinfo.side_data_type_size = sizeof(pkt->side_data->type);
-      asio::write(socket, asio::buffer((void*)&packetinfo, 12));
+      packetinfo.flags = pkt->flags;
+      packetinfo.stream_index = pkt->stream_index;
+      packetinfo.pos = pkt->pos;
+      packetinfo.duration = pkt->duration;
+
+      asio::write(socket, asio::buffer((void*)&packetinfo, 28));
       asio::write(socket, asio::buffer((void*)&pkt->side_data->type, sizeof(pkt->side_data->type)));
       asio::write(socket, asio::buffer(pkt->data, pkt->size));
       asio::write(socket, asio::buffer(pkt->side_data->data, pkt->side_data->size));
+
+
+      std::cout << "===========================\n" << "send packet:\n";
+      std::cout << "pkt_size:" << pkt->size << "\n";
+      std::cout << "pkt_side_data_elems:" << pkt->side_data_elems << "\n";
+      std::cout << "pkt_flags:" << pkt->flags << "\n";
+      std::cout << "===========================\n" << std::endl;
+      av_packet_free(&pkt);
+      pkt = av_packet_alloc();
     }
     if (ret == AVERROR_EOF) {
       std::cerr << "fail to avcodec_receive_packet: ret=" << ret << "\n";

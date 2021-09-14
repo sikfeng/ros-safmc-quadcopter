@@ -15,15 +15,19 @@ extern "C" {
 int main(int argc, char **argv) {
 
   //std::string ground_station_port = "4097";
-  int ground_station_port = 4097;
+  int ground_station_port = 17104;
 
   int img_metadata[3];
 
-  struct {
-    uint32_t size_data;
-    uint32_t size_side_data;
-    uint32_t side_data_type_size;
-  } packetinfo;
+    struct {
+        uint32_t size_data;
+        uint32_t size_side_data;
+        uint32_t side_data_type_size;
+        uint32_t flags;
+        uint32_t stream_index;
+        uint32_t pos;
+        uint32_t duration;
+    } packetinfo;
 
   asio::io_context io_context;
   asio::ip::tcp::acceptor acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), ground_station_port));
@@ -65,7 +69,7 @@ int main(int argc, char **argv) {
   }
 
   H264 decoder(width, height, width,height);
-  AVPacket *pkt = av_packet_alloc();
+  AVPacket *pkt;
   AVPacketSideDataType type;
   uint8_t buf[img_size*2];
   uint8_t side_data[img_size];
@@ -73,20 +77,30 @@ int main(int argc, char **argv) {
   int ret;
 
   std::chrono::time_point<std::chrono::high_resolution_clock> begin = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < 1000; ++i) {
+  for (int i = 0; i < 100; ++i) {
     try {
       //size_t len = asio::read(socket, asio::buffer(img.data, img_size));
-
-      size_t len = asio::read(socket, asio::buffer((void*)&packetinfo, 12));
+      pkt = av_packet_alloc();
+      size_t len = asio::read(socket, asio::buffer((void*)&packetinfo, 28));
       size_t len1 = asio::read(socket, asio::buffer((void*)&type, packetinfo.side_data_type_size));
       size_t len2 = asio::read(socket, asio::buffer(buf, packetinfo.size_data));
       size_t len3 = asio::read(socket, asio::buffer(side_data, packetinfo.size_side_data));
       av_packet_from_data(pkt, buf, static_cast<int>(packetinfo.size_data));
       av_packet_add_side_data(pkt, type, side_data, packetinfo.size_side_data);
+      pkt->duration = packetinfo.duration;
+      pkt->pos = packetinfo.pos;
+      pkt->stream_index = static_cast<int>(packetinfo.stream_index);
+      pkt->flags = static_cast<int>(packetinfo.flags);
+
+      std::cout << "===========================\n" << "recv packet:\n";
+      std::cout << "pkt_size:" << pkt->size << "\n";
+      std::cout << "pkt_side_data_elems:" << pkt->side_data_elems << "\n";
+      std::cout << "pkt_flags:" << pkt->flags << "\n";
+      std::cout << "===========================\n" << std::endl;
 
       decoder.decode(pkt);
-
-      while ((ret = decoder.get_frame(img)) >= 0) {}
+      av_packet_free(&pkt);
+      while ((ret = decoder.get_frame(img)) >= 0) {  }
       if (ret == AVERROR_EOF) {
         std::cerr << "fail to avcodec_receive_frame: ret=" << ret << "\n";
         break;
