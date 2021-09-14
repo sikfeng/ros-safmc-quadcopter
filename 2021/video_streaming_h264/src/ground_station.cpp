@@ -4,6 +4,7 @@
 #include <vector>
 #include <asio.hpp>
 #include <chrono>
+#include "h264.h"
 
 extern "C" {
     #include <libavutil/frame.h>
@@ -17,6 +18,12 @@ int main(int argc, char **argv) {
   int ground_station_port = 4097;
 
   int img_metadata[3];
+
+  struct {
+    uint32_t size_data;
+    uint32_t size_side_data;
+    uint32_t side_data_type_size;
+  } packetinfo;
 
   asio::io_context io_context;
   asio::ip::tcp::acceptor acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), ground_station_port));
@@ -45,7 +52,7 @@ int main(int argc, char **argv) {
     break;
   }
 
-
+  int width = img_metadata[1], height = img_metadata[0];
   int img_size = img_metadata[0] * img_metadata[1];
   std::cout << "Image size: " << img_size << std::endl;
   cv::Mat img = cv::Mat::zeros(img_metadata[0], img_metadata[1], img_metadata[2]);
@@ -57,16 +64,33 @@ int main(int argc, char **argv) {
     img = img.clone();
   }
 
+  H264 decoder(width, height, width,height);
+  AVPacket *pkt = av_packet_alloc();
+  AVPacketSideDataType type;
+  uint8_t buf[img_size*2];
+  uint8_t side_data[img_size];
+
+  int ret;
+
   std::chrono::time_point<std::chrono::high_resolution_clock> begin = std::chrono::high_resolution_clock::now();
   for (int i = 0; i < 1000; ++i) {
     try {
       //size_t len = asio::read(socket, asio::buffer(img.data, img_size));
 
-      std::vector<uchar> buf(img_size);
-      int header[1];
-      size_t len = asio::read(socket, asio::buffer(header, 4));
-      size_t len1 = asio::read(socket, asio::buffer(buf, header[0]));
-      img = cv::imdecode(buf, cv::IMREAD_UNCHANGED);
+      size_t len = asio::read(socket, asio::buffer((void*)&packetinfo, 12));
+      size_t len1 = asio::read(socket, asio::buffer((void*)&type, packetinfo.side_data_type_size));
+      size_t len2 = asio::read(socket, asio::buffer(buf, packetinfo.size_data));
+      size_t len3 = asio::read(socket, asio::buffer(side_data, packetinfo.size_side_data));
+      av_packet_from_data(pkt, buf, static_cast<int>(packetinfo.size_data));
+      av_packet_add_side_data(pkt, type, side_data, packetinfo.size_side_data);
+
+      decoder.decode(pkt);
+
+      while ((ret = decoder.get_frame(img)) >= 0) {}
+      if (ret == AVERROR_EOF) {
+        std::cerr << "fail to avcodec_receive_frame: ret=" << ret << "\n";
+        break;
+      }
       cv::imshow("ground_station_recv", img);
       cv::waitKey(1);
       writer << img;

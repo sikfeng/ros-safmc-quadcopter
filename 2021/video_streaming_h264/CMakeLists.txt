@@ -47,11 +47,11 @@ target_link_libraries(asio
   INTERFACE pthread
 )
 
-add_executable(rpi src/rpi.cpp)
+add_executable(rpi src/rpi.cpp src/h264.cpp)
 target_link_libraries(rpi asio libav ${OpenCV_LIBRARIES})
 
-add_executable(ground_station src/ground_station.cpp)
+add_executable(ground_station src/ground_station.cpp src/h264.cpp)
 target_link_libraries(ground_station asio libav ${OpenCV_LIBRARIES})
 
-add_executable(benchmark src/benchmark.cpp)
+add_executable(benchmark src/benchmark.cpp src/h264.cpp)
 target_link_libraries(benchmark asio libav ${OpenCV_LIBRARIES})

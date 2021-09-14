@@ -4,37 +4,10 @@
 #include <csignal>
 #include <vector>
 #include <asio.hpp>
-
-extern "C" {
-  #include <libavformat/avformat.h>
-  #include <libavcodec/avcodec.h>
-  #include <libavutil/avutil.h>
-  #include <libavutil/pixdesc.h>
-  #include <libswscale/swscale.h>
-  #include <libavutil/imgutils.h>
-}
+#include "h264.h"
 
 int main(int argc, char **argv) {
-  AVCodecID codec_id = AV_CODEC_ID_H264;
-  AVCodec *codec;
-  AVCodecContext *c= NULL;
-  int i, ret, x, y, got_output;
-  AVFrame *frame;
   AVPacket *pkt;
-  AVDictionary* dict = NULL;
-
-  /* find the mpeg1 video encoder */
-  codec = avcodec_find_encoder(codec_id);
-  if (!codec) {
-      fprintf(stderr, "Codec not found\n");
-      exit(1);
-  }
-
-  c = avcodec_alloc_context3(codec);
-  if (!c) {
-      fprintf(stderr, "Could not allocate video codec context\n");
-      exit(1);
-  }
 
   //ros::init(argc, argv, "video_streaming");
   //ros::NodeHandle nh;
@@ -70,63 +43,9 @@ int main(int argc, char **argv) {
             << img_metadata[2] << " type" << std::endl;
   std::cout << "Image size: " << img_size << std::endl;
 
-  /* put sample parameters */
-  c->bit_rate = 400000;
-  /* resolution must be a multiple of two */
-  c->width = img_metadata[1];
-  c->height = img_metadata[0];
-  /* frames per second */
-  c->time_base = (AVRational){1,25};
-  /* emit one intra frame every ten frames
-  * check frame pict_type before passing frame
-  * to encoder, if frame->pict_type is AV_PICTURE_TYPE_I
-  * then gop_size is ignored and the output of encoder
-  * will always be I frame irrespective to gop_size
-  */
-  c->gop_size = 10;
-  c->max_b_frames = 1;
-  c->pix_fmt = AV_PIX_FMT_YUV420P;
-
-  printf("fmt: %d\n fmt_vidcodec: %d\n", AV_PIX_FMT_BGR24, codec->pix_fmts[0]);
-
-  if (codec_id == AV_CODEC_ID_H264)
-      av_dict_set(&dict, "preset", "fast", 0);
-
-  /* open it */
-  if (avcodec_open2(c, codec, &dict) < 0) {
-      fprintf(stderr, "Could not open codec\n");
-      exit(1);
-  } 
-
-  // initialize sample scaler
-  SwsContext* swsctx = sws_getContext(
-      img_metadata[1], img_metadata[0], AV_PIX_FMT_BGR24,
-      c->width, c->height, c->pix_fmt,
-      SWS_BILINEAR, nullptr, nullptr, nullptr);
-  if (!swsctx) {
-      std::cerr << "fail to sws_getContext";
-      return 2;
-  }
-
-  // allocate frame buffer for encoding
-  frame = av_frame_alloc();
-  frame->width = c->width;
-  frame->height = c->height;
-  frame->format = static_cast<int>(c->pix_fmt);
-  ret = av_frame_get_buffer(frame, 32);
-  if (ret < 0) {
-      std::cerr << "fail to av_frame_get_buffer: ret=" << ret;
-      return 2;
-  }
-
+  H264 encoder(img.cols, img.rows, img.cols, img.rows);
   // allocate packet to retrive encoded frame
   pkt = av_packet_alloc();
-
-  std::cout<< "vcodec:  " << codec->name << "\n"
-      << "size:    " << c->width << 'x' << c->height << "\n"
-      << "fps:     " << av_q2d(c->framerate) << "\n"
-      << "pixfmt:  " << av_get_pix_fmt_name(c->pix_fmt) << "\n"
-      << std::flush;
 
   asio::io_context io_context;
   asio::ip::tcp::resolver resolver(io_context);
@@ -162,28 +81,36 @@ int main(int argc, char **argv) {
   }
 
   // encoding loop
-  int64_t frame_pts = 0;
-  unsigned nb_frames = 0;
+  int ret;
+
+  struct {
+      uint32_t size_data;
+      uint32_t size_side_data;
+      uint32_t side_data_type_size;
+  } packetinfo;
 
   //cv::namedWindow("rpi_send", 1);
   for (int i = 0; i < 1000; ++i) {
-    cap >> img;
+    if (i == 1000)
+      encoder.flushEncode();
+    else
+      cap >> img;
 
-    // convert cv::Mat(OpenCV) to AVFrame(FFmpeg)
-    const int stride[4] = { static_cast<int>(img.step[0]) };
-    sws_scale(swsctx, &img.data, stride, 0, img.rows, frame->data, frame->linesize);
-    frame->pts = frame_pts++;
-    // encode video frame
-    ret = avcodec_send_frame(c, frame);
-    if (ret < 0) {
-      std::cerr << "fail to avcodec_send_frame: ret=" << ret << "\n";
-      break;
+    encoder.encode(img);
+    while ((ret = encoder.get_packet(pkt)) >= 0) {
+      packetinfo.size_data = pkt->size;
+      packetinfo.size_side_data = pkt->side_data->size;
+      packetinfo.side_data_type_size = sizeof(pkt->side_data->type);
+      asio::write(socket, asio::buffer((void*)&packetinfo, 12));
+      asio::write(socket, asio::buffer((void*)&pkt->side_data->type, sizeof(pkt->side_data->type)));
+      asio::write(socket, asio::buffer(pkt->data, pkt->size));
+      asio::write(socket, asio::buffer(pkt->side_data->data, pkt->side_data->size));
     }
-    ret = avcodec_receive_packet(c, pkt);
-    if (ret != 0) {
+    if (ret == AVERROR_EOF) {
       std::cerr << "fail to avcodec_receive_packet: ret=" << ret << "\n";
       break;
     }
+    
 
     //std::vector<uchar> buf;
     //cv::imencode(".jpg", img, buf, std::vector<int>{cv::IMWRITE_JPEG_QUALITY, 30});
