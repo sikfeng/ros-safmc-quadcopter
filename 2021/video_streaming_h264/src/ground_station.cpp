@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
   int ret;
 
   std::chrono::time_point<std::chrono::high_resolution_clock> begin = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 200; ++i) {
     try {
       //size_t len = asio::read(socket, asio::buffer(img.data, img_size));
       pkt = av_packet_alloc();

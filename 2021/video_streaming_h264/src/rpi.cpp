@@ -95,8 +95,8 @@ int main(int argc, char **argv) {
   } packetinfo;
 
   //cv::namedWindow("rpi_send", 1);
-  for (int i = 0; i < 100; ++i) {
-    if (i == 100)
+  for (int i = 0; i < 200; ++i) {
+    if (i == 200)
       encoder.flushEncode();
     else
       cap >> img;

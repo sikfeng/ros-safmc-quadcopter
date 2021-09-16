@@ -37,8 +37,8 @@ private:
 
 public:
     H264(int frame_width, int frame_height, int encode_width, int encode_height, bool encode);
-    void encode(cv::Mat image);
-    void decode(AVPacket *packet);
+    void encode(const cv::Mat &image);
+    void decode(const AVPacket *packet);
 
     int get_packet(AVPacket *packet);
     int get_frame(cv::Mat *image);
