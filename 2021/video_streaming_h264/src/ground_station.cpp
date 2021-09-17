@@ -13,8 +13,7 @@ extern "C" {
 }
 
 int main(int argc, char **argv) {
-
-  //std::string ground_station_port = "4097";
+    //std::string ground_station_port = "4097";
   int ground_station_port = 17104;
 
   int img_metadata[3];
@@ -27,6 +26,7 @@ int main(int argc, char **argv) {
         uint32_t stream_index;
         uint32_t pos;
         uint32_t duration;
+        uint8_t end;
     } packetinfo;
 
   asio::io_context io_context;
@@ -74,14 +74,14 @@ int main(int argc, char **argv) {
   uint8_t buf[img_size*2];
   uint8_t side_data[1000];
 
-  int ret;
+  int ret, cont = 1, i = 0;
 
   std::chrono::time_point<std::chrono::high_resolution_clock> begin = std::chrono::high_resolution_clock::now();
-  for (int i = 0; i < 200; ++i) {
+  while (cont) {
     try {
       //size_t len = asio::read(socket, asio::buffer(img.data, img_size));
       pkt = av_packet_alloc();
-      size_t len = asio::read(socket, asio::buffer((void*)&packetinfo, 28));
+      size_t len = asio::read(socket, asio::buffer((void*)&packetinfo, 29));
       size_t len1 = asio::read(socket, asio::buffer((void*)&type, packetinfo.side_data_type_size));
       size_t len2 = asio::read(socket, asio::buffer(buf, packetinfo.size_data));
       size_t len3 = asio::read(socket, asio::buffer(side_data, packetinfo.size_side_data));
@@ -94,6 +94,10 @@ int main(int argc, char **argv) {
       pkt->stream_index = static_cast<int>(packetinfo.stream_index);
       pkt->flags = static_cast<int>(packetinfo.flags);
 
+      if (packetinfo.end == 1) {
+          cont = 0;
+      }
+
       std::cout << "===========================\n" << "recv packet:\n";
       std::cout << "pkt_size:" << pkt->size << "\n";
       std::cout << "pkt_side_data_elems:" << pkt->side_data_elems << "\n";
@@ -101,14 +105,17 @@ int main(int argc, char **argv) {
       std::cout << "===========================\n" << std::endl;
 
       decoder.decode(pkt);
-      while ((ret = decoder.get_frame(&img)) >= 0) {  }
+      cv::waitKey(10);
+      while ((ret = decoder.get_frame(&img)) >= 0) {
+          i++;
+          cv::imshow("ground_station_recv", img);
+          cv::waitKey(10);
+          writer << img;
+      }
       if (ret == AVERROR_EOF) {
         std::cerr << "fail to avcodec_receive_frame: ret=" << ret << "\n";
         break;
       }
-      cv::imshow("ground_station_recv", img);
-      cv::waitKey(1);
-      writer << img;
     } catch (const asio::system_error& ex) {
       std::cout << "Error when receiving frame " << i << std::endl;
       std::cout << ex.what() << std::endl;

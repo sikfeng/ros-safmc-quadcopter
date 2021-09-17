@@ -134,9 +134,16 @@ int H264::get_frame(cv::Mat *image) {
 }
 
 void H264::flushEncode() {
-    this->ret = avcodec_send_frame(this->c, NULL);
+    this->ret = avcodec_send_frame(this->c, nullptr);
+    if (this->ret == -541478725) return;
     if (this->ret < 0) {
-        std::cerr << "fail to avcodec_send_frame: ret=" << this->ret << "\n";
+        std::cerr << "fail to avcodec_send_frame: ret=";
+        if (this->ret == AVERROR(EAGAIN)) std::cout << "EAGAIN" << std::endl;
+        else if (this->ret == AVERROR(EINVAL)) std::cout << "EINVAL" << std::endl;
+        else if (this->ret == AVERROR(ENOMEM)) std::cout << "ENOMEM" << std::endl;
+        else if (this->ret == AVERROR_EOF) std::cout << "EOF" << std::endl;
+        else if (this->ret == AVERROR_UNKNOWN) std::cout << "UNKNOWN" << std::endl;
+        else std::cout << this->ret << "\n";
         throw std::runtime_error("fail to avcodec send frame");
     }
 }

@@ -92,16 +92,21 @@ int main(int argc, char **argv) {
       uint32_t stream_index;
       uint32_t pos;
       uint32_t duration;
+      uint8_t  end;
   } packetinfo;
 
   //cv::namedWindow("rpi_send", 1);
-  for (int i = 0; i < 200; ++i) {
-    if (i == 200)
-      encoder.flushEncode();
-    else
+  for (int i = 0; i <= 200; ++i) {
+    cv::waitKey(10);
+    packetinfo.end = 0;
+    if (i == 200) {
+        std::cout << "End" << std::endl;
+        encoder.flushEncode();
+        packetinfo.end = 1;
+    } else {
       cap >> img;
-
-    encoder.encode(img);
+      encoder.encode(img);
+    }
     pkt = av_packet_alloc();
     while ((ret = encoder.get_packet(pkt)) >= 0) {
       packetinfo.size_data = pkt->size;
@@ -112,7 +117,7 @@ int main(int argc, char **argv) {
       packetinfo.pos = pkt->pos;
       packetinfo.duration = pkt->duration;
 
-      asio::write(socket, asio::buffer((void*)&packetinfo, 28));
+      asio::write(socket, asio::buffer((void*)&packetinfo, 29));
       asio::write(socket, asio::buffer((void*)&pkt->side_data->type, sizeof(pkt->side_data->type)));
       asio::write(socket, asio::buffer(pkt->data, pkt->size));
       asio::write(socket, asio::buffer(pkt->side_data->data, pkt->side_data->size));
