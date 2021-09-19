@@ -12,15 +12,12 @@ int main(int argc, char **argv) {
   //ros::init(argc, argv, "video_streaming");
   //ros::NodeHandle nh;
 
-  std::string ground_station_addr = "127.0.0.1";
-  //std::string ground_station_addr = "6.tcp.ngrok.io";
-  std::string ground_station_port = "17104";
-  //ros::param::get("ground_station_addr", ground_station_addr);
-  //ros::param::get("ground_station_port", ground_station_port);
+  int rpi_port = 17104;
+  //ros::param::get("rpi_port", rpi_port);
   
   //signal(SIGINT, SigintHandler);
 
-  cv::VideoCapture cap("../test/test240_pad.mp4");
+  cv::VideoCapture cap("../test/test720_pad.mp4");
   //cv::VideoCapture cap(0);
   //cap.set(cv::CAP_PROP_FRAME_WIDTH, 1280); // (2560, 720), (1280, 480), (640, 240)
   //cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
@@ -48,36 +45,32 @@ int main(int argc, char **argv) {
   // allocate packet to retrive encoded frame
   pkt = av_packet_alloc();
 
+
+  // to accept connection from ground station
   asio::io_context io_context;
-  asio::ip::tcp::resolver resolver(io_context);
-  asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(ground_station_addr, ground_station_port);
-
+  asio::ip::tcp::acceptor acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), rpi_port));
   asio::ip::tcp::socket socket(io_context);
+
+  // start reading for connections
   while (true) {
+    asio::error_code ec;
+    socket.close(ec);
+    //socket.open(asio::ip::tcp::v4(), ec);
+    acceptor.accept(socket);
+    std::cout << "Connected!" << std::endl;
     try {
-      asio::connect(socket, endpoints);
-    } catch (const asio::system_error& ex) {
-      std::cerr << "ERROR! Unable to connect to " << ground_station_addr << ':' << ground_station_port << std::endl;
-      //ros::Duration(0.2).sleep();
-      continue;
-    }
-    break;
-  }
+      asio::write(socket, asio::buffer(img_metadata, 12));
 
-  std::cout << "Connected!" << std::endl;
-  //socket.set_option(asio::detail::socket_option::integer<SOL_SOCKET, SO_RCVTIMEO>{ 500 });
-
-  while (true) {
-    //asio::error_code ignored_error;
-    asio::write(socket, asio::buffer(img_metadata, 12));
-
-    std::vector<char> buf(5);
-    size_t len = asio::read(socket, asio::buffer(buf, 3));
-    std::string s(buf.begin(), buf.end());
-    std::cout << s << std::endl;
-    break;
-    if (s == "ACK") {
+      std::vector<char> buf(5);
+      size_t len = asio::read(socket, asio::buffer(buf, 3));
+      std::string s(buf.begin(), buf.end());
+      std::cout << s << std::endl;
       break;
+      if (s == "ACK") {
+        break;
+      }
+    } catch (const asio::system_error& ex) {
+      continue;
     }
   }
 
@@ -85,21 +78,21 @@ int main(int argc, char **argv) {
   int ret;
 
   struct {
-      uint32_t size_data;
-      uint32_t size_side_data;
-      uint32_t side_data_type_size;
-      uint32_t flags;
-      uint32_t stream_index;
-      uint32_t pos;
-      uint32_t duration;
-      uint8_t  end;
+    uint32_t size_data;
+    uint32_t size_side_data;
+    uint32_t side_data_type_size;
+    uint32_t flags;
+    uint32_t stream_index;
+    uint32_t pos;
+    uint32_t duration;
+    uint8_t  end;
   } packetinfo;
 
   //cv::namedWindow("rpi_send", 1);
-  for (int i = 0; i <= 200; ++i) {
+  for (int i = 0; i <= 1000; ++i) {
     cv::waitKey(10);
     packetinfo.end = 0;
-    if (i == 200) {
+    if (i == 1000) {
         std::cout << "End" << std::endl;
         encoder.flushEncode();
         packetinfo.end = 1;

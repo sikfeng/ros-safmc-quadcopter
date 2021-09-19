@@ -13,48 +13,59 @@ extern "C" {
 }
 
 int main(int argc, char **argv) {
-    //std::string ground_station_port = "4097";
-  int ground_station_port = 17104;
+  std::string rpi_addr = "127.0.0.1";
+  std::string rpi_port = "17104";
 
   int img_metadata[3];
 
-    struct {
-        uint32_t size_data;
-        uint32_t size_side_data;
-        uint32_t side_data_type_size;
-        uint32_t flags;
-        uint32_t stream_index;
-        uint32_t pos;
-        uint32_t duration;
-        uint8_t end;
-    } packetinfo;
+  struct {
+    uint32_t size_data;
+    uint32_t size_side_data;
+    uint32_t side_data_type_size;
+    uint32_t flags;
+    uint32_t stream_index;
+    uint32_t pos;
+    uint32_t duration;
+    uint8_t end;
+  } packetinfo;
+
+
+  // for making connection to rpi
 
   asio::io_context io_context;
-  asio::ip::tcp::acceptor acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), ground_station_port));
+  asio::ip::tcp::resolver resolver(io_context);
+  asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(rpi_addr, rpi_port);
   asio::ip::tcp::socket socket(io_context);
 
-  // start reading for connections
   while (true) {
-      asio::error_code ec;
-      socket.close(ec);
-      //socket.open(asio::ip::tcp::v4(), ec);
-      acceptor.accept(socket);
-      try {
-        asio::mutable_buffer mut_buf = asio::buffer(img_metadata);
-        size_t len = asio::read(socket, asio::buffer(mut_buf, 12));
-        std::cout << len << " bytes read\n";
-        memcpy(&img_metadata, (char*)mut_buf.data(), asio::buffer_size(mut_buf));
-        std::cout << img_metadata[0] << " rows, " 
-  	        << img_metadata[1] << " cols, " 
-  		<< img_metadata[2] << " type" << std::endl;
-      } catch (const asio::system_error& ex) {
-        continue;
-      }
-    
-    // send ACK to start video transmission
-    asio::write(socket, asio::buffer("ACK", 3));
+    try {
+      asio::connect(socket, endpoints);
+    } catch (const asio::system_error& ex) {
+      std::cerr << "ERROR! Unable to connect to " << rpi_addr << ':' << rpi_port << std::endl;
+      //ros::Duration(0.2).sleep();
+      continue;
+    }
+    std::cout << "Connected!" << std::endl;
+
+    try {
+      asio::mutable_buffer mut_buf = asio::buffer(img_metadata);
+      size_t len = asio::read(socket, asio::buffer(mut_buf, 12));
+      std::cout << len << " bytes read\n";
+      memcpy(&img_metadata, (char*)mut_buf.data(), asio::buffer_size(mut_buf));
+      std::cout << img_metadata[0] << " rows, " 
+          << img_metadata[1] << " cols, " 
+    << img_metadata[2] << " type" << std::endl;
+    } catch (const asio::system_error& ex) {
+      continue;
+    }
+    std::cout << "Disconnected :(" << std::endl;
     break;
   }
+
+    
+  // send ACK to start video transmission
+  asio::write(socket, asio::buffer("ACK", 3));
+
 
   int width = img_metadata[1], height = img_metadata[0];
   int img_size = img_metadata[0] * img_metadata[1];
